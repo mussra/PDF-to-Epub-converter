@@ -1,15 +1,16 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Procesador Profesional de ePub & PDF v1.5.0</title>
+    <title>Procesador Profesional de ePub & PDF v1.6.0</title>
     <!-- JSZip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- PDF.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
-        :root {
+        /* Definición de Temas de Color */
+        :root[data-theme="light"] {
             --primary: #4f46e5;
             --primary-hover: #4338ca;
             --primary-light: #e0e7ff;
@@ -19,10 +20,70 @@
             --text-muted: #64748b;
             --border: #e2e8f0;
             --success: #16a34a;
-            --success-bg: #dcfce7;
-            --radius: 12px;
+            --drop-bg: #f8fafc;
+        }
+        :root[data-theme="dark"] {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-light: #312e81;
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --success: #22c55e;
+            --drop-bg: #1e293b;
+        }
+        :root[data-theme="blue-sky"] {
+            --primary: #0284c7;
+            --primary-hover: #0369a1;
+            --primary-light: #e0f2fe;
+            --bg-color: #f0f9ff;
+            --card-bg: #ffffff;
+            --text-main: #0c4a6e;
+            --text-muted: #38bdf8;
+            --border: #bae6fd;
+            --success: #10b981;
+            --drop-bg: #f8fafc;
+        }
+        :root[data-theme="green-field"] {
+            --primary: #16a34a;
+            --primary-hover: #15803d;
+            --primary-light: #dcfce7;
+            --bg-color: #f0fdf4;
+            --card-bg: #ffffff;
+            --text-main: #14532d;
+            --text-muted: #4ade80;
+            --border: #bbf7d0;
+            --success: #10b981;
+            --drop-bg: #f8fafc;
+        }
+        :root[data-theme="gold"] {
+            --primary: #d97706;
+            --primary-hover: #b45309;
+            --primary-light: #fef3c7;
+            --bg-color: #fffbeb;
+            --card-bg: #ffffff;
+            --text-main: #78350f;
+            --text-muted: #f59e0b;
+            --border: #fde68a;
+            --success: #16a34a;
+            --drop-bg: #fefce8;
+        }
+        :root[data-theme="luxury"] {
+            --primary: #c5a059;
+            --primary-hover: #b38f4a;
+            --primary-light: #2c2518;
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-main: #e5e5e5;
+            --text-muted: #a3a3a3;
+            --border: #333333;
+            --success: #d4af37;
+            --drop-bg: #181818;
         }
 
+        :root { --radius: 12px; }
         * { box-sizing: border-box; }
 
         body { 
@@ -33,6 +94,7 @@
             background: var(--bg-color); 
             color: var(--text-main); 
             line-height: 1.5;
+            transition: background 0.3s, color 0.3s;
         }
 
         .header {
@@ -51,6 +113,12 @@
             letter-spacing: -0.025em;
         }
 
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
         .version-badge {
             background: var(--primary-light);
             color: var(--primary);
@@ -60,6 +128,17 @@
             font-size: 0.85rem;
         }
 
+        .theme-selector {
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--card-bg);
+            color: var(--text-main);
+            font-weight: 500;
+            cursor: pointer;
+            outline: none;
+        }
+
         .card { 
             background: var(--card-bg); 
             padding: 28px; 
@@ -67,6 +146,7 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05); 
             margin-bottom: 24px; 
             border: 1px solid var(--border);
+            transition: background 0.3s, border-color 0.3s;
         }
 
         .form-group { margin-bottom: 20px; }
@@ -84,7 +164,7 @@
             border-radius: var(--radius);
             padding: 30px;
             text-align: center;
-            background: #f8fafc;
+            background: var(--drop-bg);
             cursor: pointer;
             transition: all 0.2s ease;
             position: relative;
@@ -113,11 +193,12 @@
             display: none;
             flex-direction: column;
             gap: 8px;
-            background: #f1f5f9;
+            background: var(--drop-bg);
             padding: 12px 16px;
             border-radius: 8px;
             margin-top: 12px;
             font-size: 0.9rem;
+            border: 1px solid var(--border);
         }
 
         .file-item {
@@ -134,7 +215,7 @@
             padding: 12px; 
             border: 1px solid var(--border); 
             border-radius: 8px; 
-            background: #fff;
+            background: var(--card-bg);
             font-size: 0.95rem;
             color: var(--text-main);
             outline: none;
@@ -146,7 +227,7 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            background: #f8fafc;
+            background: var(--drop-bg);
             padding: 14px 16px;
             border-radius: 8px;
             border: 1px solid var(--border);
@@ -181,8 +262,8 @@
         h2 { font-size: 1.2rem; margin-top: 0; margin-bottom: 16px; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
-        th { background: #f8fafc; font-weight: 600; color: var(--text-muted); }
-        .badge-type { background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }
+        th { background: var(--drop-bg); font-weight: 600; color: var(--text-muted); }
+        .badge-type { background: var(--border); padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; color: var(--text-main); }
         
         .download-btn { 
             background: var(--success); 
@@ -195,7 +276,7 @@
             font-weight: 600;
             transition: background 0.2s;
         }
-        .download-btn:hover { background: #15803d; }
+        .download-btn:hover { opacity: 0.9; }
     </style>
 </head>
 <body>
@@ -203,7 +284,17 @@
     <div class="card">
         <div class="header">
             <h1>Procesador ePub & PDF</h1>
-            <span class="version-badge">v1.5.0</span>
+            <div class="header-controls">
+                <select id="themeSelector" class="theme-selector" onchange="changeTheme(this.value)">
+                    <option value="light">☀️ Light</option>
+                    <option value="dark">🌙 Dark</option>
+                    <option value="blue-sky">☁️ Blue Sky</option>
+                    <option value="green-field">🌿 Green Field</option>
+                    <option value="gold">🪙 Gold</option>
+                    <option value="luxury">👑 Luxury</option>
+                </select>
+                <span class="version-badge">v1.6.0</span>
+            </div>
         </div>
         <p style="color: var(--text-muted); margin-top: 0; margin-bottom: 24px;">
             Convierte tus documentos PDF optimizados para lectura ePub, o ajusta ePubs existentes invirtiendo su orden de lectura y configurando el sentido RTL (Manga).
@@ -266,6 +357,16 @@
     </div>
 
     <script>
+        // Cargar tema guardado al iniciar
+        const savedTheme = localStorage.getItem('user_theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        document.getElementById('themeSelector').value = savedTheme;
+
+        function changeTheme(themeName) {
+            document.documentElement.setAttribute('data-theme', themeName);
+            localStorage.setItem('user_theme', themeName);
+        }
+
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
         const fileInput = document.getElementById('fileInput');
@@ -328,7 +429,7 @@
             fileInfo.style.display = 'flex';
 
             let html = '';
-            selectedFiles.forEach((file, index) => {
+            selectedFiles.forEach((file) => {
                 html += `<div class="file-item">
                     <div class="file-details"><span>${file.name}</span> (${formatBytes(file.size)})</div>
                 </div>`;
