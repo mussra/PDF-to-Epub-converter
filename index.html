@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversor PDF de Texto a ePub (Invertido / Manga)</title>
+    <!-- JSZip para empaquetar ePub -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- PDF.js para extraer texto estructurado -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 650px; margin: 40px auto; padding: 20px; background: #f4f4f9; color: #333; }
+        .card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        input[type="file"] { margin: 20px 0; display: block; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        #status { margin-top: 15px; font-weight: bold; color: #28a745; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>Conversor de PDF de Texto a ePub (Modo Invertido)</h2>
+        <p>Sube un PDF con texto real. Extraerá el contenido como texto ejecutable/reflejable en ePub, invertirá el orden de las páginas y configurará la lectura RTL.</p>
+        
+        <input type="file" id="pdfFile" accept=".pdf">
+        <button id="processBtn" onclick="convertPdfTextToEpub()" disabled>Convertir Texto PDF a ePub</button>
+        
+        <div id="status"></div>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        const fileInput = document.getElementById('pdfFile');
+        const processBtn = document.getElementById('processBtn');
+        const statusDiv = document.getElementById('status');
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                processBtn.disabled = false;
+                statusDiv.textContent = '';
+            }
+        });
+
+        async function convertPdfTextToEpub() {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            processBtn.disabled = true;
+            statusDiv.textContent = 'Leyendo documento PDF...';
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+                const pdfDoc = await loadingTask.promise;
+                const numPages = pdfDoc.numPages;
+
+                const zip = new JSZip();
+
+                // Estructura contenedora obligatoria de un ePub
+                zip.folder("META-INF");
+                zip.folder("OEBPS");
+                zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+                
+                zip.file("META-INF/container.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+    <rootfiles>
+        <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+    </rootfiles>
+</container>`);
+
+                // Estilo CSS genérico para dar buen formato al texto en cualquier eReader
+                const cssContent = `
+                    body {
+                        font-family: serif;
+                        line-height: 1.6;
+                        margin: 1em;
+                        text-align: justify;
+                    }
+                    p {
+                        text-indent: 1.5em;
+                        margin-top: 0;
+                        margin-bottom: 0.5em;
+                    }
+                `;
+                zip.file("OEBPS/style.css", cssContent);
+
+                const htmlFolder = zip.folder("OEBPS/text");
+                let pagesData = [];
+
+                statusDiv.textContent = `Procesando y extrayendo texto de ${numPages} páginas...`;
+
+                for (let i = 1; i <= numPages; i++) {
+                    const page = await pdfDoc.getPage(i);
+                    const textContent = await page.getTextContent();
+                    
+                    // Unir fragmentos de texto respetando saltos de línea aproximados
+                    let pageText = '';
+                    let lastY = null;
+
+                    for (const item of textContent.items) {
+                        if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
+                            pageText += '\n';
+                        }
+                        pageText += item.str + ' ';
+                        lastY = item.transform[5];
+                    }
+
+                    // Convertir saltos de línea dobles o simples en párrafos HTML limpios
+                    const paragraphs = pageText
+                        .split(/\n+/)
+                        .map(p => p.trim())
+                        .filter(p => p.length > 0)
+                        .map(p => `<p>${escapeXml(p)}</p>`)
+                        .join('\n');
+
+                    pagesData.push({ pageNum: i, htmlBody: paragraphs });
+                }
+
+                // Invertir el orden de las páginas
+                pagesData.reverse();
+
+                let manifestItems = `<item id="css" href="style.css" media-type="text/css"/>\n`;
+                let spineItems = '';
+
+                pagesData.forEach((p, idx) => {
+                    const pageId = `page_${idx + 1}`;
+                    
+                    const xhtmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="es" xml:lang="es">
+<head>
+    <title>Página ${idx + 1}</title>
+    <link rel="stylesheet" type="text/css" href="../style.css"/>
+</head>
+<body>
+    ${p.htmlBody.length > 0 ? p.htmlBody : '<p>[Página vacía o con imágenes únicamente]</p>'}
+</body>
+</html>`;
+
+                    htmlFolder.file(`p_${idx + 1}.xhtml`, xhtmlContent);
+
+                    manifestItems += `<item id="${pageId}" href="text/p_${idx + 1}.xhtml" media-type="application/xhtml+xml"/>\n`;
+                    spineItems += `<itemref idref="${pageId}"/>\n`;
+                });
+
+                // Crear archivo OPF con orden invertido y dirección RTL
+                const contentOpf = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pubid">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:title>${escapeXml(file.name.replace('.pdf', ''))} (Texto Invertido)</dc:title>
+        <dc:language>es</dc:language>
+        <identifier id="pubid">urn:uuid:text-manga-fixed-id</identifier>
+    </metadata>
+    <manifest>
+        ${manifestItems}
+    </manifest>
+    <spine page-progression-direction="rtl">
+        ${spineItems}
+    </spine>
+</package>`;
+
+                zip.file("OEBPS/content.opf", contentOpf);
+
+                statusDiv.textContent = 'Generando ePub de texto...';
+                const content = await zip.generateAsync({ type: "blob" });
+
+                const url = URL.createObjectURL(content);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = file.name.replace('.pdf', '_texto_invertido.epub');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                statusDiv.textContent = '¡ePub de texto generado y descargado correctamente!';
+            } catch (error) {
+                console.error(error);
+                statusDiv.textContent = `Error: ${error.message}`;
+            } finally {
+                processBtn.disabled = false;
+            }
+        }
+
+        // Función auxiliar para evitar errores de sintaxis XML con caracteres especiales
+        function escapeXml(unsafe) {
+            return unsafe.replace(/[<>&'"]/g, (c) => {
+                switch (c) {
+                    case '<': return '&lt;';
+                    case '>': return '&gt;';
+                    case '&': return '&amp;';
+                    case '\'': return '&apos;';
+                    case '"': return '&quot;';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
