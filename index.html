@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Procesador ePub & PDF - Combinar Ficheros v1.9.0</title>
+    <title>Procesador ePub & PDF - Reordenar y Combinar v2.0.0</title>
     <!-- JSZip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- PDF.js -->
@@ -199,14 +199,68 @@
             border: 1px solid var(--border);
         }
 
-        .file-item {
+        .file-list-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 600;
         }
 
-        .file-details span { font-weight: 600; color: var(--text-main); }
-        .remove-file { background: none; border: none; color: #ef4444; cursor: pointer; font-weight: 600; padding: 0; width: auto; font-size: 0.85rem; }
+        .sort-btn, .remove-file {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+        .sort-btn { color: var(--primary); background: var(--primary-light); }
+        .remove-file { color: #ef4444; }
+
+        #fileListContainer {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--card-bg);
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            cursor: grab;
+            transition: background 0.2s;
+        }
+        .file-item:active { cursor: grabbing; }
+        .file-item.dragging { opacity: 0.4; }
+
+        .file-item-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .file-index {
+            background: var(--primary);
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 700;
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
 
         select { 
             width: 100%; 
@@ -295,11 +349,11 @@
                     <option value="gold">🪙 Gold</option>
                     <option value="luxury">👑 Luxury</option>
                 </select>
-                <span class="version-badge">v1.9.0 (Combine)</span>
+                <span class="version-badge">v2.0.0 (Reorder)</span>
             </div>
         </div>
         <p style="color: var(--text-muted); margin-top: 0; margin-bottom: 24px;">
-            Convierte o combina documentos PDF y ePubs en uno solo, optimizado con soporte de portada para Kindle y lectura orientada a Manga.
+            Convierte, reordena y combina documentos PDF y ePubs optimizados con soporte de portada para Kindle y lectura orientada a Manga.
         </p>
         
         <div class="form-group">
@@ -312,8 +366,14 @@
                 </div>
             </div>
             <div id="fileInfo">
+                <div class="file-list-header">
+                    <span>Orden de combinación (Arrastra para reordenar):</span>
+                    <div>
+                        <button type="button" class="sort-btn" onclick="sortFilesAlphabetically()">Ordenar A-Z</button>
+                        <button type="button" class="remove-file" onclick="clearFiles()">Limpiar todo</button>
+                    </div>
+                </div>
                 <div id="fileListContainer"></div>
-                <button type="button" class="remove-file" style="margin-top: 8px;" onclick="clearFiles()">Limpiar selección</button>
             </div>
         </div>
 
@@ -418,8 +478,15 @@
 
         function handleFilesSelected(files) {
             selectedFiles = Array.from(files);
+            // Ordenar alfabéticamente por defecto
+            selectedFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: 'base'}));
             renderSelectedFilesList();
             processBtn.disabled = selectedFiles.length === 0;
+        }
+
+        function sortFilesAlphabetically() {
+            selectedFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: 'base'}));
+            renderSelectedFilesList();
         }
 
         function renderSelectedFilesList() {
@@ -433,12 +500,45 @@
             fileInfo.style.display = 'flex';
 
             let html = '';
-            selectedFiles.forEach((file) => {
-                html += `<div class="file-item">
-                    <div class="file-details"><span>${file.name}</span> (${formatBytes(file.size)})</div>
+            selectedFiles.forEach((file, index) => {
+                html += `<div class="file-item" draggable="true" data-index="${index}" ondragstart="onDragStart(event)" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragend="onDragEnd(event)">
+                    <div class="file-item-left">
+                        <span class="file-index">${index + 1}</span>
+                        <div><strong>${file.name}</strong> <span style="font-size:0.8rem; color:var(--text-muted);">(${formatBytes(file.size)})</span></div>
+                    </div>
+                    <span style="color: var(--text-muted); font-size: 0.8rem; cursor: grab;">☰ Arrastrar</span>
                 </div>`;
             });
             fileListContainer.innerHTML = html;
+        }
+
+        let draggedIndex = null;
+
+        function onDragStart(e) {
+            draggedIndex = parseInt(e.currentTarget.getAttribute('data-index'));
+            e.currentTarget.classList.add('dragging');
+        }
+
+        function onDragOver(e) {
+            e.preventDefault();
+        }
+
+        function onDrop(e) {
+            e.preventDefault();
+            const targetItem = e.target.closest('.file-item');
+            if (!targetItem) return;
+            const targetIndex = parseInt(targetItem.getAttribute('data-index'));
+
+            if (draggedIndex !== null && draggedIndex !== targetIndex) {
+                const movedFile = selectedFiles.splice(draggedIndex, 1)[0];
+                selectedFiles.splice(targetIndex, 0, movedFile);
+                renderSelectedFilesList();
+            }
+        }
+
+        function onDragEnd(e) {
+            e.currentTarget.classList.remove('dragging');
+            draggedIndex = null;
         }
 
         function clearFiles() {
