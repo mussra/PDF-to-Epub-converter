@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Procesador ePub & PDF - Compatible Kindle v1.7.0</title>
+    <title>Procesador ePub & PDF - Combinar Ficheros v1.9.0</title>
     <!-- JSZip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- PDF.js -->
@@ -221,6 +221,12 @@
         }
         select:focus { border-color: var(--primary); }
 
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
         .checkbox-wrapper {
             display: flex;
             align-items: center;
@@ -289,11 +295,11 @@
                     <option value="gold">🪙 Gold</option>
                     <option value="luxury">👑 Luxury</option>
                 </select>
-                <span class="version-badge">v1.7.0 (Kindle Fix)</span>
+                <span class="version-badge">v1.9.0 (Combine)</span>
             </div>
         </div>
         <p style="color: var(--text-muted); margin-top: 0; margin-bottom: 24px;">
-            Convierte tus documentos PDF a ePub optimizado o ajusta ePubs existentes con máxima compatibilidad para Send to Kindle.
+            Convierte o combina documentos PDF y ePubs en uno solo, optimizado con soporte de portada para Kindle y lectura orientada a Manga.
         </p>
         
         <div class="form-group">
@@ -320,10 +326,14 @@
             </select>
         </div>
 
-        <div class="form-group">
+        <div class="form-group checkbox-group">
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="rtlCheck" checked>
                 <label for="rtlCheck">Activar Modo Manga / Invertir páginas (Compatible Kindle)</label>
+            </div>
+            <div class="checkbox-wrapper">
+                <input type="checkbox" id="combineCheck">
+                <label for="combineCheck">Combinar todos los ficheros en un único ePub de salida</label>
             </div>
         </div>
 
@@ -448,10 +458,6 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
         }
 
-        function sanitizeFilename(name) {
-            return name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-        }
-
         function updateProgress(percent, text) {
             progressContainer.style.display = 'block';
             progressFill.style.width = percent + '%';
@@ -464,38 +470,47 @@
             processBtn.disabled = true;
             const mode = document.getElementById('modeSelect').value;
             const isRtl = document.getElementById('rtlCheck').checked;
+            const shouldCombine = document.getElementById('combineCheck').checked;
 
             try {
-                for (let i = 0; i < selectedFiles.length; i++) {
-                    const file = selectedFiles[i];
-                    const ext = file.name.split('.').pop().toLowerCase();
-                    let resultBlob, newFileName;
+                if (shouldCombine && selectedFiles.length > 1) {
+                    updateProgress(10, "Iniciando combinación de archivos...");
+                    const combinedBlob = await processCombinedFiles(selectedFiles, mode, isRtl);
+                    const newFileName = `combinado_kindle_${Date.now()}.epub`;
+                    downloadBlob(combinedBlob, newFileName);
+                    addToHistory(newFileName, 'EPUB (COMBINADO)', combinedBlob);
+                } else {
+                    for (let i = 0; i < selectedFiles.length; i++) {
+                        const file = selectedFiles[i];
+                        const ext = file.name.split('.').pop().toLowerCase();
+                        let resultBlob, newFileName;
 
-                    updateProgress(Math.round((i / selectedFiles.length) * 100), `Procesando ${i + 1} de ${selectedFiles.length}: ${file.name}`);
+                        updateProgress(Math.round((i / selectedFiles.length) * 100), `Procesando ${i + 1} de ${selectedFiles.length}: ${file.name}`);
 
-                    const cleanBaseName = file.name.substring(0, file.name.lastIndexOf('.')).replace(/[^a-zA-Z0-9_\-]/g, '_');
+                        const cleanBaseName = file.name.substring(0, file.name.lastIndexOf('.')).replace(/[^a-zA-Z0-9_\-]/g, '_');
 
-                    if (ext === 'epub') {
-                        resultBlob = await processEpubFile(file, isRtl);
-                        newFileName = `${cleanBaseName}_kindle.epub`;
-                    } else if (ext === 'pdf') {
-                        if (mode === 'pdf-images') {
-                            resultBlob = await processPdfAsImages(file, isRtl);
-                        } else if (mode === 'pdf-text') {
-                            resultBlob = await processPdfAsText(file, isRtl);
+                        if (ext === 'epub') {
+                            resultBlob = await processEpubFile(file, isRtl);
+                            newFileName = `${cleanBaseName}_kindle.epub`;
+                        } else if (ext === 'pdf') {
+                            if (mode === 'pdf-images') {
+                                resultBlob = await processPdfAsImages(file, isRtl);
+                            } else if (mode === 'pdf-text') {
+                                resultBlob = await processPdfAsText(file, isRtl);
+                            } else {
+                                resultBlob = await processPdfSmartAuto(file, isRtl);
+                            }
+                            newFileName = `${cleanBaseName}_kindle.epub`;
                         } else {
-                            resultBlob = await processPdfSmartAuto(file, isRtl);
+                            continue;
                         }
-                        newFileName = `${cleanBaseName}_kindle.epub`;
-                    } else {
-                        continue;
-                    }
 
-                    downloadBlob(resultBlob, newFileName);
-                    addToHistory(newFileName, ext.toUpperCase(), resultBlob);
+                        downloadBlob(resultBlob, newFileName);
+                        addToHistory(newFileName, ext.toUpperCase(), resultBlob);
+                    }
                 }
 
-                updateProgress(100, '¡Todos los ficheros procesados con éxito!');
+                updateProgress(100, '¡Proceso completado con éxito!');
                 setTimeout(() => {
                     progressContainer.style.display = 'none';
                     clearFiles();
@@ -507,6 +522,130 @@
             } finally {
                 processBtn.disabled = false;
             }
+        }
+
+        async function processCombinedFiles(files, mode, isRtl) {
+            const zip = new JSZip();
+            zip.folder("META-INF");
+            zip.folder("OEBPS");
+            zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+            
+            zip.file("META-INF/container.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+    <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`);
+
+            zip.file("OEBPS/style.css", "html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; display: flex; justify-content: center; align-items: center; } .page-img { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; } img { max-width: 100vw; max-height: 100vh; width: auto; height: auto; object-fit: contain; } .text-body { padding: 1em; background: #fff; color: #000; overflow-y: auto; text-align: justify; line-height: 1.6; } p { text-indent: 1.5em; margin: 0 0 0.5em 0; }");
+
+            let imageFolder = zip.folder("OEBPS/images");
+            let htmlFolder = zip.folder("OEBPS/text");
+            let allPagesData = [];
+            let globalPageIndex = 1;
+
+            for (let fIdx = 0; fIdx < files.length; fIdx++) {
+                const file = files[fIdx];
+                const ext = file.name.split('.').pop().toLowerCase();
+
+                updateProgress(Math.round((fIdx / files.length) * 80), `Extrayendo del fichero ${fIdx + 1} de ${files.length}: ${file.name}`);
+
+                if (ext === 'pdf') {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    const numPages = pdfDoc.numPages;
+
+                    for (let i = 1; i <= numPages; i++) {
+                        const page = await pdfDoc.getPage(i);
+                        const textContent = await page.getTextContent();
+                        let pageText = '';
+                        let lastY = null;
+
+                        for (const item of textContent.items) {
+                            if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) pageText += '\n';
+                            pageText += item.str + ' ';
+                            lastY = item.transform[5];
+                        }
+
+                        const cleanText = pageText.trim();
+                        const hasSignificantText = (mode !== 'pdf-images') && (cleanText.length > 20);
+
+                        const viewport = page.getViewport({ scale: 2.0 });
+                        const canvas = document.createElement('canvas');
+                        const context = canvas.getContext('2d');
+                        canvas.height = viewport.height;
+                        canvas.width = viewport.width;
+
+                        await page.render({ canvasContext: context, viewport: viewport }).promise;
+                        const blobImg = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.90));
+                        
+                        let pageBody = '';
+                        let imgName = null;
+
+                        if (!hasSignificantText) {
+                            imgName = `img_${String(globalPageIndex).padStart(5, '0')}.jpg`;
+                            imageFolder.file(imgName, blobImg);
+                            pageBody = `<div class="page-img"><img src="../images/${imgName}" alt="Pagina ${globalPageIndex}"/></div>`;
+                        } else {
+                            const paragraphs = cleanText.split(/\n+/).map(p => p.trim()).filter(p => p.length > 0).map(p => `<p>${escapeXml(p)}</p>`).join('\n');
+                            pageBody = `<div class="text-body">${paragraphs}</div>`;
+                        }
+
+                        allPagesData.push({ pageIndex: globalPageIndex, pageBody, imgName });
+                        globalPageIndex++;
+                    }
+                }
+            }
+
+            if (isRtl) allPagesData.reverse();
+
+            let manifestItems = `<item id="css" href="style.css" media-type="text/css"/>\n`;
+            let spineItems = '';
+            let firstCoverImgId = null;
+
+            allPagesData.forEach((p, idx) => {
+                const pageId = `page_${idx + 1}`;
+                
+                htmlFolder.file(`p_${idx + 1}.xhtml`, `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="es">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <title>Pagina ${idx + 1}</title>
+    <link rel="stylesheet" href="../style.css"/>
+</head>
+<body>
+    ${p.pageBody || '<p>[Pagina vacia]</p>'}
+</body>
+</html>`);
+
+                manifestItems += `<item id="${pageId}" href="text/p_${idx + 1}.xhtml" media-type="application/xhtml+xml"/>\n`;
+                if (p.imgName) {
+                    const isCover = (idx === 0);
+                    const imgId = `img_${idx + 1}`;
+                    if (isCover) firstCoverImgId = imgId;
+                    manifestItems += `<item id="${imgId}" href="images/${p.imgName}" media-type="image/jpeg"${isCover ? ' properties="cover-image"' : ''}/>\n`;
+                }
+                spineItems += `<itemref idref="${pageId}"/>\n`;
+            });
+
+            const coverMeta = firstCoverImgId ? `<meta name="cover" content="${firstCoverImgId}"/>` : '';
+
+            zip.file("OEBPS/content.opf", `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pubid">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:title>Coleccion Combinada Manga</dc:title>
+        <dc:language>es</dc:language>
+        <dc:identifier id="pubid">urn:uuid:${Date.now()}</dc:identifier>
+        ${coverMeta}
+    </metadata>
+    <manifest>
+        ${manifestItems}
+    </manifest>
+    <spine>
+        ${spineItems}
+    </spine>
+</package>`);
+
+            return await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
         }
 
         async function processEpubFile(file, isRtl) {
@@ -603,6 +742,7 @@
 
             let manifestItems = `<item id="css" href="style.css" media-type="text/css"/>\n`;
             let spineItems = '';
+            let firstCoverImgId = null;
 
             pagesData.forEach((p, idx) => {
                 const pageId = `page_${idx + 1}`;
@@ -622,12 +762,16 @@
 
                 manifestItems += `<item id="${pageId}" href="text/p_${idx + 1}.xhtml" media-type="application/xhtml+xml"/>\n`;
                 if (p.imgName) {
-                    manifestItems += `<item id="img_${idx + 1}" href="images/${p.imgName}" media-type="image/jpeg"/>\n`;
+                    const isCover = (idx === 0);
+                    const imgId = `img_${idx + 1}`;
+                    if (isCover) firstCoverImgId = imgId;
+                    manifestItems += `<item id="${imgId}" href="images/${p.imgName}" media-type="image/jpeg"${isCover ? ' properties="cover-image"' : ''}/>\n`;
                 }
                 spineItems += `<itemref idref="${pageId}"/>\n`;
             });
 
             const cleanTitle = escapeXml(file.name.replace(/[^a-zA-Z0-9_\-\.\s]/g, ''));
+            const coverMeta = firstCoverImgId ? `<meta name="cover" content="${firstCoverImgId}"/>` : '';
 
             zip.file("OEBPS/content.opf", `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pubid">
@@ -635,6 +779,7 @@
         <dc:title>${cleanTitle}</dc:title>
         <dc:language>es</dc:language>
         <dc:identifier id="pubid">urn:uuid:${Date.now()}</dc:identifier>
+        ${coverMeta}
     </metadata>
     <manifest>
         ${manifestItems}
@@ -690,9 +835,13 @@
 
             let manifestItems = '';
             let spineItems = '';
+            let firstCoverImgId = null;
 
             pagesData.forEach((p, idx) => {
                 const pageId = `page_${idx + 1}`;
+                const isCover = (idx === 0);
+                const imgId = `img_${idx + 1}`;
+                if (isCover) firstCoverImgId = imgId;
 
                 htmlFolder.file(`p_${idx + 1}.xhtml`, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
@@ -711,11 +860,12 @@
 </html>`);
 
                 manifestItems += `<item id="${pageId}" href="text/p_${idx + 1}.xhtml" media-type="application/xhtml+xml"/>\n`;
-                manifestItems += `<item id="img_${idx + 1}" href="images/${p.imgName}" media-type="image/jpeg"/>\n`;
+                manifestItems += `<item id="${imgId}" href="images/${p.imgName}" media-type="image/jpeg"${isCover ? ' properties="cover-image"' : ''}/>\n`;
                 spineItems += `<itemref idref="${pageId}"/>\n`;
             });
 
             const cleanTitle = escapeXml(file.name.replace(/[^a-zA-Z0-9_\-\.\s]/g, ''));
+            const coverMeta = firstCoverImgId ? `<meta name="cover" content="${firstCoverImgId}"/>` : '';
 
             zip.file("OEBPS/content.opf", `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pubid">
@@ -723,6 +873,7 @@
         <dc:title>${cleanTitle}</dc:title>
         <dc:language>es</dc:language>
         <dc:identifier id="pubid">urn:uuid:${Date.now()}</dc:identifier>
+        ${coverMeta}
     </metadata>
     <manifest>
         ${manifestItems}
