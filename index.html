@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Procesador Profesional de ePub & PDF v1.6.0</title>
+    <title>Procesador ePub & PDF - Compatible Kindle v1.7.0</title>
     <!-- JSZip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- PDF.js -->
@@ -158,7 +158,6 @@
             font-size: 0.95rem;
         }
 
-        /* Drag & Drop Zone */
         .drop-zone {
             border: 2px dashed var(--border);
             border-radius: var(--radius);
@@ -188,7 +187,6 @@
         .drop-zone-text p { margin: 5px 0; color: var(--text-muted); font-size: 0.9rem; }
         .drop-zone-text strong { color: var(--primary); }
 
-        /* File Info Preview */
         #fileInfo {
             display: none;
             flex-direction: column;
@@ -252,13 +250,11 @@
         .btn-primary:active:not(:disabled) { transform: scale(0.99); }
         .btn-primary:disabled { background: #cbd5e1; cursor: not-allowed; }
         
-        /* Progress Bar */
         #progress-container { margin-top: 24px; display: none; }
         .progress-bar-bg { background: var(--border); border-radius: 9999px; overflow: hidden; height: 12px; width: 100%; }
         .progress-bar-fill { background: var(--primary); height: 100%; width: 0%; transition: width 0.2s ease; border-radius: 9999px; }
         #status-text { margin-top: 10px; font-size: 0.9rem; font-weight: 500; color: var(--text-muted); text-align: center; }
 
-        /* History Table */
         h2 { font-size: 1.2rem; margin-top: 0; margin-bottom: 16px; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
@@ -293,14 +289,13 @@
                     <option value="gold">🪙 Gold</option>
                     <option value="luxury">👑 Luxury</option>
                 </select>
-                <span class="version-badge">v1.6.0</span>
+                <span class="version-badge">v1.7.0 (Kindle Fix)</span>
             </div>
         </div>
         <p style="color: var(--text-muted); margin-top: 0; margin-bottom: 24px;">
-            Convierte tus documentos PDF optimizados para lectura ePub, o ajusta ePubs existentes invirtiendo su orden de lectura y configurando el sentido RTL (Manga).
+            Convierte tus documentos PDF a ePub optimizado o ajusta ePubs existentes con máxima compatibilidad para Send to Kindle.
         </p>
         
-        <!-- Zona Drag & Drop -->
         <div class="form-group">
             <label>Ficheros fuente (.pdf o .epub - Selección múltiple permitida)</label>
             <div class="drop-zone" id="dropZone">
@@ -328,7 +323,7 @@
         <div class="form-group">
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="rtlCheck" checked>
-                <label for="rtlCheck">Activar Modo Manga / Derecha a Izquierda (RTL) e invertir páginas</label>
+                <label for="rtlCheck">Activar Modo Manga / Invertir páginas (Compatible Kindle)</label>
             </div>
         </div>
 
@@ -357,7 +352,6 @@
     </div>
 
     <script>
-        // Cargar tema guardado al iniciar
         const savedTheme = localStorage.getItem('user_theme') || 'light';
         document.documentElement.setAttribute('data-theme', savedTheme);
         document.getElementById('themeSelector').value = savedTheme;
@@ -454,6 +448,10 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
         }
 
+        function sanitizeFilename(name) {
+            return name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        }
+
         function updateProgress(percent, text) {
             progressContainer.style.display = 'block';
             progressFill.style.width = percent + '%';
@@ -473,11 +471,13 @@
                     const ext = file.name.split('.').pop().toLowerCase();
                     let resultBlob, newFileName;
 
-                    updateProgress(Math.round((i / selectedFiles.length) * 100), `Procesando fichero ${i + 1} de ${selectedFiles.length}: ${file.name}`);
+                    updateProgress(Math.round((i / selectedFiles.length) * 100), `Procesando ${i + 1} de ${selectedFiles.length}: ${file.name}`);
+
+                    const cleanBaseName = file.name.substring(0, file.name.lastIndexOf('.')).replace(/[^a-zA-Z0-9_\-]/g, '_');
 
                     if (ext === 'epub') {
                         resultBlob = await processEpubFile(file, isRtl);
-                        newFileName = file.name.replace(/\.epub$/i, '') + '_processed.epub';
+                        newFileName = `${cleanBaseName}_kindle.epub`;
                     } else if (ext === 'pdf') {
                         if (mode === 'pdf-images') {
                             resultBlob = await processPdfAsImages(file, isRtl);
@@ -486,7 +486,7 @@
                         } else {
                             resultBlob = await processPdfSmartAuto(file, isRtl);
                         }
-                        newFileName = file.name.replace(/\.pdf$/i, '') + '_converted.epub';
+                        newFileName = `${cleanBaseName}_kindle.epub`;
                     } else {
                         continue;
                     }
@@ -528,20 +528,15 @@
 
             const spine = opfDoc.querySelector("spine");
             if (isRtl) {
-                spine.setAttribute("page-progression-direction", "rtl");
-            } else {
-                spine.removeAttribute("page-progression-direction");
+                const itemrefs = Array.from(spine.querySelectorAll("itemref"));
+                itemrefs.reverse();
+                itemrefs.forEach(ref => spine.appendChild(ref));
             }
 
-            const itemrefs = Array.from(spine.querySelectorAll("itemref"));
-            itemrefs.reverse();
-            itemrefs.forEach(ref => spine.appendChild(ref));
-
             const serializer = new XMLSerializer();
-            content.file(opfPath, serializer.serializeToString(opfDoc));
+            content.file(opfPath, '<?xml version="1.0" encoding="UTF-8"?>\n' + serializer.serializeToString(opfDoc));
 
-            const blob = await content.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
-            return blob;
+            return await content.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
         }
 
         async function processPdfSmartAuto(file, isRtl) {
@@ -593,15 +588,15 @@
                 let imgName = null;
 
                 if (!hasSignificantText) {
-                    imgName = `page_${String(i).padStart(3, '0')}.jpg`;
+                    imgName = `page_${String(i).padStart(4, '0')}.jpg`;
                     imageFolder.file(imgName, blobImg);
-                    pageBody = `<div class="page-img"><img src="../images/${imgName}" alt="Página ${i}"/></div>`;
+                    pageBody = `<div class="page-img"><img src="../images/${imgName}" alt="Pagina ${i}"/></div>`;
                 } else {
                     const paragraphs = cleanText.split(/\n+/).map(p => p.trim()).filter(p => p.length > 0).map(p => `<p>${escapeXml(p)}</p>`).join('\n');
                     pageBody = `<div class="text-body">${paragraphs}</div>`;
                 }
 
-                pagesData.push({ pageNum: i, pageBody, imgName, isImageOnly: !hasSignificantText });
+                pagesData.push({ pageNum: i, pageBody, imgName });
             }
 
             if (isRtl) pagesData.reverse();
@@ -611,47 +606,45 @@
 
             pagesData.forEach((p, idx) => {
                 const pageId = `page_${idx + 1}`;
-                const isCoverPage = (idx === 0);
                 
                 htmlFolder.file(`p_${idx + 1}.xhtml`, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" lang="es">
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-    <title>Página ${idx + 1}</title>
+    <title>Pagina ${idx + 1}</title>
     <link rel="stylesheet" href="../style.css"/>
 </head>
-<body class="${p.isImageOnly ? 'img-body' : ''}">
-    ${p.pageBody || '<p>[Página vacía]</p>'}
+<body>
+    ${p.pageBody || '<p>[Pagina vacia]</p>'}
 </body>
 </html>`);
 
-                const propertiesAttr = isCoverPage ? ' properties="cover-image"' : '';
-                manifestItems += `<item id="${pageId}" href="text/p_${idx + 1}.xhtml" media-type="application/xhtml+xml"${propertiesAttr}/>\n`;
-                
+                manifestItems += `<item id="${pageId}" href="text/p_${idx + 1}.xhtml" media-type="application/xhtml+xml"/>\n`;
                 if (p.imgName) {
-                    const imgProperties = (isCoverPage && p.isImageOnly) ? ' properties="cover-image"' : '';
-                    manifestItems += `<item id="img_${idx + 1}" href="images/${p.imgName}" media-type="image/jpeg"${imgProperties}/>\n`;
+                    manifestItems += `<item id="img_${idx + 1}" href="images/${p.imgName}" media-type="image/jpeg"/>\n`;
                 }
                 spineItems += `<itemref idref="${pageId}"/>\n`;
             });
 
+            const cleanTitle = escapeXml(file.name.replace(/[^a-zA-Z0-9_\-\.\s]/g, ''));
+
             zip.file("OEBPS/content.opf", `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pubid">
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-        <dc:title>${escapeXml(file.name)}</dc:title>
+        <dc:title>${cleanTitle}</dc:title>
         <dc:language>es</dc:language>
-        <identifier id="pubid">urn:uuid:pdf-smart-fullscreen</identifier>
-        <meta property="rendition:layout">pre-paginated</meta>
-        <meta property="rendition:orientation">auto</meta>
-        <meta property="rendition:spread">auto</meta>
+        <dc:identifier id="pubid">urn:uuid:${Date.now()}</dc:identifier>
     </metadata>
-    <manifest>${manifestItems}</manifest>
-    <spine ${isRtl ? 'page-progression-direction="rtl"' : ''}>${spineItems}</spine>
+    <manifest>
+        ${manifestItems}
+    </manifest>
+    <spine>
+        ${spineItems}
+    </spine>
 </package>`);
 
-            const blob = await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
-            return blob;
+            return await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
         }
 
         async function processPdfAsText(file, isRtl) {
@@ -687,7 +680,7 @@
 
                 await page.render({ canvasContext: context, viewport: viewport }).promise;
                 const blobImg = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.90));
-                const imgName = `page_${String(i).padStart(3, '0')}.jpg`;
+                const imgName = `page_${String(i).padStart(4, '0')}.jpg`;
                 imageFolder.file(imgName, blobImg);
 
                 pagesData.push({ imgName });
@@ -700,46 +693,46 @@
 
             pagesData.forEach((p, idx) => {
                 const pageId = `page_${idx + 1}`;
-                const isCoverPage = (idx === 0);
 
                 htmlFolder.file(`p_${idx + 1}.xhtml`, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-    <title>Página ${idx + 1}</title>
+    <title>Pagina ${idx + 1}</title>
     <style>
         html, body { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background: black; display: flex; justify-content: center; align-items: center; }
         img { width: 100vw; height: 100vh; object-fit: contain; }
     </style>
 </head>
 <body>
-    <div><img src="../images/${p.imgName}" alt="Página ${idx + 1}"/></div>
+    <div><img src="../images/${p.imgName}" alt="Pagina ${idx + 1}"/></div>
 </body>
 </html>`);
 
-                const propertiesAttr = isCoverPage ? ' properties="cover-image"' : '';
-                manifestItems += `<item id="${pageId}" href="text/p_${idx + 1}.xhtml" media-type="application/xhtml+xml"${propertiesAttr}/>\n`;
-                manifestItems += `<item id="img_${idx + 1}" href="images/${p.imgName}" media-type="image/jpeg"${propertiesAttr}/>\n`;
+                manifestItems += `<item id="${pageId}" href="text/p_${idx + 1}.xhtml" media-type="application/xhtml+xml"/>\n`;
+                manifestItems += `<item id="img_${idx + 1}" href="images/${p.imgName}" media-type="image/jpeg"/>\n`;
                 spineItems += `<itemref idref="${pageId}"/>\n`;
             });
+
+            const cleanTitle = escapeXml(file.name.replace(/[^a-zA-Z0-9_\-\.\s]/g, ''));
 
             zip.file("OEBPS/content.opf", `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pubid">
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-        <dc:title>${escapeXml(file.name)}</dc:title>
+        <dc:title>${cleanTitle}</dc:title>
         <dc:language>es</dc:language>
-        <identifier id="pubid">urn:uuid:pdf-img-fullscreen</identifier>
-        <meta property="rendition:layout">pre-paginated</meta>
-        <meta property="rendition:orientation">auto</meta>
-        <meta property="rendition:spread">auto</meta>
+        <dc:identifier id="pubid">urn:uuid:${Date.now()}</dc:identifier>
     </metadata>
-    <manifest>${manifestItems}</manifest>
-    <spine ${isRtl ? 'page-progression-direction="rtl"' : ''}>${spineItems}</spine>
+    <manifest>
+        ${manifestItems}
+    </manifest>
+    <spine>
+        ${spineItems}
+    </spine>
 </package>`);
 
-            const blob = await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
-            return blob;
+            return await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
         }
 
         function downloadBlob(blob, filename) {
