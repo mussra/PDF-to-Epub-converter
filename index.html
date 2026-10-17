@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conversor y Procesador Profesional de ePub / PDF</title>
+    <title>Conversor y Procesador de ePub / PDF v1.1.0</title>
     <!-- JSZip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- PDF.js -->
@@ -17,15 +17,66 @@
             --text-color: #1e293b;
             --border-color: #cbd5e1;
         }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 800px; margin: 30px auto; padding: 20px; background: var(--bg-color); color: var(--text-color); }
-        .card { background: var(--card-bg); padding: 30px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        h1, h2 { color: #0f172a; margin-top: 0; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            max-width: 800px; 
+            margin: 30px auto; 
+            padding: 20px; 
+            background: var(--bg-color); 
+            color: var(--text-color); 
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            color: #0f172a;
+        }
+        .version-tag {
+            background: #e0e7ff;
+            color: #3730a3;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+        .card { 
+            background: var(--card-bg); 
+            padding: 30px; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1); 
+            margin-bottom: 20px; 
+        }
         .form-group { margin-bottom: 20px; }
         label { display: block; font-weight: 600; margin-bottom: 8px; }
-        input[type="file"], select { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box; background: #fff; }
+        input[type="file"], select { 
+            width: 100%; 
+            padding: 10px; 
+            border: 1px solid var(--border-color); 
+            border-radius: 6px; 
+            box-sizing: border-box; 
+            background: #fff; 
+        }
         .checkbox-group { display: flex; align-items: center; gap: 10px; }
         .checkbox-group input { width: 20px; height: 20px; }
-        button { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; width: 100%; transition: background 0.2s; }
+        button { 
+            background: var(--primary); 
+            color: white; 
+            border: none; 
+            padding: 12px 24px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-size: 16px; 
+            font-weight: 600; 
+            width: 100%; 
+            transition: background 0.2s; 
+        }
         button:hover { background: var(--primary-hover); }
         button:disabled { background: #94a3b8; cursor: not-allowed; }
         
@@ -39,15 +90,27 @@
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
         th { background: #f1f5f9; font-weight: 600; }
-        .download-btn { background: #16a34a; padding: 6px 12px; font-size: 13px; width: auto; border-radius: 4px; text-decoration: none; color: white; display: inline-block; }
+        .download-btn { 
+            background: #16a34a; 
+            padding: 6px 12px; 
+            font-size: 13px; 
+            width: auto; 
+            border-radius: 4px; 
+            color: white; 
+            border: none;
+            cursor: pointer;
+        }
         .download-btn:hover { background: #15803d; }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h1>Procesador Profesional de ePub & PDF</h1>
-        <p>Convierte PDFs o ajusta ePubs existentes configurando el sentido de lectura y el formato de extracción.</p>
+        <div class="header">
+            <h1>Procesador ePub & PDF</h1>
+            <span class="version-tag">v1.1.0</span>
+        </div>
+        <p>Convierte PDFs a ePub o modifica ePubs existentes invirtiendo páginas y ajustando la dirección de lectura.</p>
         
         <div class="form-group">
             <label for="fileInput">Seleccionar Fichero (.pdf o .epub):</label>
@@ -87,7 +150,7 @@
                     <th>Tipo</th>
                     <th>Acción</th>
                 </tr>
-            imha>
+            </thead>
             <tbody id="historyTableBody"></tbody>
         </table>
     </div>
@@ -140,21 +203,20 @@
 
                 if (ext === 'epub' || mode === 'auto') {
                     resultBlob = await processEpubFile(file, isRtl);
-                    newFileName = file.name.replace('.epub', '_processed.epub');
+                    newFileName = file.name.replace(/\.epub$/i, '') + '_processed.epub';
                 } else if (ext === 'pdf') {
                     if (mode === 'pdf-images') {
                         resultBlob = await processPdfAsImages(file, isRtl);
                     } else {
                         resultBlob = await processPdfAsText(file, isRtl);
                     }
-                    newFileName = file.name.replace('.pdf', '_converted.epub');
+                    newFileName = file.name.replace(/\.pdf$/i, '') + '_converted.epub';
                 } else {
                     throw new Error("Formato de fichero no soportado.");
                 }
 
-                // Forzar descarga limpia con extensión .epub real
                 downloadBlob(resultBlob, newFileName);
-                addToHistory(newFileName, ext.toUpperCase());
+                addToHistory(newFileName, ext.toUpperCase(), resultBlob);
 
                 statusText.textContent = '¡Proceso completado con éxito!';
             } catch (error) {
@@ -193,7 +255,7 @@
             }
 
             const itemrefs = Array.from(spine.querySelectorAll("itemref"));
-            itemrefs.reverse(); // Invertir orden siempre que esté marcado
+            itemrefs.reverse();
 
             itemrefs.forEach(ref => spine.appendChild(ref));
 
@@ -356,19 +418,27 @@
             URL.revokeObjectURL(url);
         }
 
-        function addToHistory(filename, type) {
+        function addToHistory(filename, type, blob) {
             historyCard.style.display = 'block';
-            historyList.push({ filename, type });
+            const id = historyList.length;
+            historyList.push({ id, filename, type, blob });
             
             let html = '';
             historyList.forEach(item => {
                 html += `<tr>
                     <td>${item.filename}</td>
                     <td>${item.type}</td>
-                    <td><button class="download-btn" onclick="alert('Usa el botón de descarga automática o procesa de nuevo.')">Descargado</button></td>
+                    <td><button class="download-btn" onclick="downloadFromHistory(${item.id})">Descargar de nuevo</button></td>
                 </tr>`;
             });
             historyTableBody.innerHTML = html;
+        }
+
+        function downloadFromHistory(id) {
+            const item = historyList.find(i => i.id === id);
+            if (item) {
+                downloadBlob(item.blob, item.filename);
+            }
         }
 
         function escapeXml(unsafe) {
