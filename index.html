@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Procesador Profesional de ePub & PDF v1.4.0</title>
+    <title>Procesador Profesional de ePub & PDF v1.5.0</title>
     <!-- JSZip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- PDF.js -->
@@ -111,13 +111,19 @@
         /* File Info Preview */
         #fileInfo {
             display: none;
-            align-items: center;
-            justify-content: space-between;
+            flex-direction: column;
+            gap: 8px;
             background: #f1f5f9;
             padding: 12px 16px;
             border-radius: 8px;
             margin-top: 12px;
             font-size: 0.9rem;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .file-details span { font-weight: 600; color: var(--text-main); }
@@ -197,7 +203,7 @@
     <div class="card">
         <div class="header">
             <h1>Procesador ePub & PDF</h1>
-            <span class="version-badge">v1.4.0</span>
+            <span class="version-badge">v1.5.0</span>
         </div>
         <p style="color: var(--text-muted); margin-top: 0; margin-bottom: 24px;">
             Convierte tus documentos PDF optimizados para lectura ePub, o ajusta ePubs existentes invirtiendo su orden de lectura y configurando el sentido RTL (Manga).
@@ -205,17 +211,17 @@
         
         <!-- Zona Drag & Drop -->
         <div class="form-group">
-            <label>Fichero fuente (.pdf o .epub)</label>
+            <label>Ficheros fuente (.pdf o .epub - Selección múltiple permitida)</label>
             <div class="drop-zone" id="dropZone">
-                <input type="file" id="fileInput" accept=".pdf, .epub">
+                <input type="file" id="fileInput" accept=".pdf, .epub" multiple>
                 <div class="drop-zone-text">
-                    <strong>Haz clic para seleccionar</strong> o arrastra tu archivo aquí
-                    <p>Soporta formatos PDF y ePub</p>
+                    <strong>Haz clic para seleccionar</strong> o arrastra tus archivos aquí
+                    <p>Soporta múltiples ficheros PDF y ePub</p>
                 </div>
             </div>
             <div id="fileInfo">
-                <div class="file-details">Fichero seleccionado: <span id="fileName">-</span> (<span id="fileSize">-</span>)</div>
-                <button type="button" class="remove-file" onclick="clearFile()">Quitar</button>
+                <div id="fileListContainer"></div>
+                <button type="button" class="remove-file" style="margin-top: 8px;" onclick="clearFiles()">Limpiar selección</button>
             </div>
         </div>
 
@@ -235,7 +241,7 @@
             </div>
         </div>
 
-        <button id="processBtn" class="btn-primary" onclick="handleProcess()" disabled>Procesar Fichero</button>
+        <button id="processBtn" class="btn-primary" onclick="handleProcess()" disabled>Procesar Ficheros</button>
 
         <div id="progress-container">
             <div class="progress-bar-bg">
@@ -265,8 +271,7 @@
         const fileInput = document.getElementById('fileInput');
         const dropZone = document.getElementById('dropZone');
         const fileInfo = document.getElementById('fileInfo');
-        const fileNameSpan = document.getElementById('fileName');
-        const fileSizeSpan = document.getElementById('fileSize');
+        const fileListContainer = document.getElementById('fileListContainer');
         const processBtn = document.getElementById('processBtn');
         const progressContainer = document.getElementById('progress-container');
         const progressFill = document.getElementById('progressFill');
@@ -274,6 +279,7 @@
         const historyCard = document.getElementById('history-card');
         const historyTableBody = document.getElementById('historyTableBody');
 
+        let selectedFiles = [];
         let historyList = [];
 
         ['dragenter', 'dragover'].forEach(eventName => {
@@ -290,27 +296,48 @@
             }, false);
         });
 
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleFileSelected(e.target.files[0]);
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                handleFilesSelected(files);
             }
         });
 
-        function handleFileSelected(file) {
-            fileNameSpan.textContent = file.name;
-            fileSizeSpan.textContent = formatBytes(file.size);
-            dropZone.style.display = 'none';
-            fileInfo.style.display = 'flex';
-            processBtn.disabled = false;
-
-            const ext = file.name.split('.').pop().toLowerCase();
-            const modeSelect = document.getElementById('modeSelect');
-            if (ext === 'epub' || ext === 'pdf') {
-                modeSelect.value = 'auto';
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFilesSelected(e.target.files);
             }
+        });
+
+        function handleFilesSelected(files) {
+            selectedFiles = Array.from(files);
+            renderSelectedFilesList();
+            processBtn.disabled = selectedFiles.length === 0;
         }
 
-        function clearFile() {
+        function renderSelectedFilesList() {
+            if (selectedFiles.length === 0) {
+                fileInfo.style.display = 'none';
+                dropZone.style.display = 'block';
+                return;
+            }
+
+            dropZone.style.display = 'none';
+            fileInfo.style.display = 'flex';
+
+            let html = '';
+            selectedFiles.forEach((file, index) => {
+                html += `<div class="file-item">
+                    <div class="file-details"><span>${file.name}</span> (${formatBytes(file.size)})</div>
+                </div>`;
+            });
+            fileListContainer.innerHTML = html;
+        }
+
+        function clearFiles() {
+            selectedFiles = [];
             fileInput.value = '';
             fileInfo.style.display = 'none';
             dropZone.style.display = 'block';
@@ -333,37 +360,45 @@
         }
 
         async function handleProcess() {
-            const file = fileInput.files[0];
-            if (!file) return;
+            if (selectedFiles.length === 0) return;
 
             processBtn.disabled = true;
             const mode = document.getElementById('modeSelect').value;
             const isRtl = document.getElementById('rtlCheck').checked;
-            const ext = file.name.split('.').pop().toLowerCase();
 
             try {
-                let resultBlob, newFileName;
+                for (let i = 0; i < selectedFiles.length; i++) {
+                    const file = selectedFiles[i];
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    let resultBlob, newFileName;
 
-                if (ext === 'epub') {
-                    resultBlob = await processEpubFile(file, isRtl);
-                    newFileName = file.name.replace(/\.epub$/i, '') + '_processed.epub';
-                } else if (ext === 'pdf') {
-                    if (mode === 'pdf-images') {
-                        resultBlob = await processPdfAsImages(file, isRtl);
-                    } else if (mode === 'pdf-text') {
-                        resultBlob = await processPdfAsText(file, isRtl);
+                    updateProgress(Math.round((i / selectedFiles.length) * 100), `Procesando fichero ${i + 1} de ${selectedFiles.length}: ${file.name}`);
+
+                    if (ext === 'epub') {
+                        resultBlob = await processEpubFile(file, isRtl);
+                        newFileName = file.name.replace(/\.epub$/i, '') + '_processed.epub';
+                    } else if (ext === 'pdf') {
+                        if (mode === 'pdf-images') {
+                            resultBlob = await processPdfAsImages(file, isRtl);
+                        } else if (mode === 'pdf-text') {
+                            resultBlob = await processPdfAsText(file, isRtl);
+                        } else {
+                            resultBlob = await processPdfSmartAuto(file, isRtl);
+                        }
+                        newFileName = file.name.replace(/\.pdf$/i, '') + '_converted.epub';
                     } else {
-                        resultBlob = await processPdfSmartAuto(file, isRtl);
+                        continue;
                     }
-                    newFileName = file.name.replace(/\.pdf$/i, '') + '_converted.epub';
-                } else {
-                    throw new Error("Formato de fichero no soportado.");
+
+                    downloadBlob(resultBlob, newFileName);
+                    addToHistory(newFileName, ext.toUpperCase(), resultBlob);
                 }
 
-                downloadBlob(resultBlob, newFileName);
-                addToHistory(newFileName, ext.toUpperCase(), resultBlob);
-
-                statusText.textContent = '¡Proceso completado con éxito!';
+                updateProgress(100, '¡Todos los ficheros procesados con éxito!');
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                    clearFiles();
+                }, 2000);
             } catch (error) {
                 console.error(error);
                 alert(`Error: ${error.message}`);
@@ -374,7 +409,6 @@
         }
 
         async function processEpubFile(file, isRtl) {
-            updateProgress(10, "Leyendo estructura del ePub...");
             const zip = new JSZip();
             const content = await zip.loadAsync(file);
 
@@ -387,7 +421,6 @@
             const rootfile = containerDoc.querySelector("rootfile");
             const opfPath = rootfile.getAttribute("full-path");
 
-            updateProgress(40, "Modificando metadatos y orden de lectura...");
             const opfFile = content.file(opfPath);
             const opfText = await opfFile.async("text");
             const opfDoc = parser.parseFromString(opfText, "text/xml");
@@ -406,9 +439,7 @@
             const serializer = new XMLSerializer();
             content.file(opfPath, serializer.serializeToString(opfDoc));
 
-            updateProgress(80, "Generando ePub corregido...");
             const blob = await content.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
-            updateProgress(100, "¡Finalizado!");
             return blob;
         }
 
@@ -434,9 +465,6 @@
             let pagesData = [];
 
             for (let i = 1; i <= numPages; i++) {
-                let percent = Math.round((i / numPages) * 80);
-                updateProgress(percent, `Analizando página inteligente ${i} de ${numPages}`);
-
                 const page = await pdfDoc.getPage(i);
                 const textContent = await page.getTextContent();
                 let pageText = '';
@@ -488,4 +516,168 @@
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" lang="es">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <title>Página ${idx + 1}</title>
+    <link rel="stylesheet" href="../style.css"/>
+</head>
+<body class="${p.isImageOnly ? 'img-body' : ''}">
+    ${p.pageBody || '<p>[Página vacía]</p>'}
+</body>
+</html>`);
+
+                const propertiesAttr = isCoverPage ? ' properties="cover-image"' : '';
+                manifestItems += `<item id="${pageId}" href="text/p_${idx + 1}.xhtml" media-type="application/xhtml+xml"${propertiesAttr}/>\n`;
+                
+                if (p.imgName) {
+                    const imgProperties = (isCoverPage && p.isImageOnly) ? ' properties="cover-image"' : '';
+                    manifestItems += `<item id="img_${idx + 1}" href="images/${p.imgName}" media-type="image/jpeg"${imgProperties}/>\n`;
+                }
+                spineItems += `<itemref idref="${pageId}"/>\n`;
+            });
+
+            zip.file("OEBPS/content.opf", `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pubid">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:title>${escapeXml(file.name)}</dc:title>
+        <dc:language>es</dc:language>
+        <identifier id="pubid">urn:uuid:pdf-smart-fullscreen</identifier>
+        <meta property="rendition:layout">pre-paginated</meta>
+        <meta property="rendition:orientation">auto</meta>
+        <meta property="rendition:spread">auto</meta>
+    </metadata>
+    <manifest>${manifestItems}</manifest>
+    <spine ${isRtl ? 'page-progression-direction="rtl"' : ''}>${spineItems}</spine>
+</package>`);
+
+            const blob = await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
+            return blob;
+        }
+
+        async function processPdfAsText(file, isRtl) {
+            return await processPdfSmartAuto(file, isRtl);
+        }
+
+        async function processPdfAsImages(file, isRtl) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const numPages = pdfDoc.numPages;
+
+            const zip = new JSZip();
+            zip.folder("META-INF");
+            zip.folder("OEBPS");
+            zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+            
+            zip.file("META-INF/container.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+    <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`);
+
+            let imageFolder = zip.folder("OEBPS/images");
+            let htmlFolder = zip.folder("OEBPS/text");
+            let pagesData = [];
+
+            for (let i = 1; i <= numPages; i++) {
+                const page = await pdfDoc.getPage(i);
+                const viewport = page.getViewport({ scale: 2.0 });
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+                const blobImg = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.90));
+                const imgName = `page_${String(i).padStart(3, '0')}.jpg`;
+                imageFolder.file(imgName, blobImg);
+
+                pagesData.push({ imgName });
+            }
+
+            if (isRtl) pagesData.reverse();
+
+            let manifestItems = '';
+            let spineItems = '';
+
+            pagesData.forEach((p, idx) => {
+                const pageId = `page_${idx + 1}`;
+                const isCoverPage = (idx === 0);
+
+                htmlFolder.file(`p_${idx + 1}.xhtml`, `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <title>Página ${idx + 1}</title>
+    <style>
+        html, body { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background: black; display: flex; justify-content: center; align-items: center; }
+        img { width: 100vw; height: 100vh; object-fit: contain; }
+    </style>
+</head>
+<body>
+    <div><img src="../images/${p.imgName}" alt="Página ${idx + 1}"/></div>
+</body>
+</html>`);
+
+                const propertiesAttr = isCoverPage ? ' properties="cover-image"' : '';
+                manifestItems += `<item id="${pageId}" href="text/p_${idx + 1}.xhtml" media-type="application/xhtml+xml"${propertiesAttr}/>\n`;
+                manifestItems += `<item id="img_${idx + 1}" href="images/${p.imgName}" media-type="image/jpeg"${propertiesAttr}/>\n`;
+                spineItems += `<itemref idref="${pageId}"/>\n`;
+            });
+
+            zip.file("OEBPS/content.opf", `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pubid">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:title>${escapeXml(file.name)}</dc:title>
+        <dc:language>es</dc:language>
+        <identifier id="pubid">urn:uuid:pdf-img-fullscreen</identifier>
+        <meta property="rendition:layout">pre-paginated</meta>
+        <meta property="rendition:orientation">auto</meta>
+        <meta property="rendition:spread">auto</meta>
+    </metadata>
+    <manifest>${manifestItems}</manifest>
+    <spine ${isRtl ? 'page-progression-direction="rtl"' : ''}>${spineItems}</spine>
+</package>`);
+
+            const blob = await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
+            return blob;
+        }
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function addToHistory(filename, type, blob) {
+            historyCard.style.display = 'block';
+            const id = historyList.length;
+            historyList.push({ id, filename, type, blob });
+            
+            let html = '';
+            historyList.forEach(item => {
+                html += `<tr>
+                    <td><strong>${item.filename}</strong></td>
+                    <td><span class="badge-type">${item.type}</span></td>
+                    <td style="text-align: right;"><button class="download-btn" onclick="downloadFromHistory(${item.id})">Descargar de nuevo</button></td>
+                </tr>`;
+            });
+            historyTableBody.innerHTML = html;
+        }
+
+        function downloadFromHistory(id) {
+            const item = historyList.find(i => i.id === id);
+            if (item) {
+                downloadBlob(item.blob, item.filename);
+            }
+        }
+
+        function escapeXml(unsafe) {
+            return unsafe.replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&apos;','"':'&quot;'}[c]));
+        }
+    </script>
+</body>
+</html>
